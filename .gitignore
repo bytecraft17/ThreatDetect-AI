@@ -1,0 +1,23 @@
+# Large model files (upload to Google Drive)
+*.pkl
+best_model_lgbm.pkl
+rf_model.pkl
+xgb_model.pkl
+iso_forest.pkl
+
+# Datasets
+nsl-kdd/
+cicids2017/
+*.arff
+*.txt
+*.csv
+*.zip
+
+# Jupyter
+.ipynb_checkpoints/
+.history/
+
+# Python
+__pycache__/
+*.pyc
+.env

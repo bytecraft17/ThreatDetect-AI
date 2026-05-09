@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ThreatDetect AI — Network Intrusion Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #020608;
+    --panel:     #040d12;
+    --border:    #0a2a35;
+    --accent:    #00ffe7;
+    --accent2:   #ff3c6e;
+    --warn:      #ffaa00;
+    --safe:      #00e676;
+    --text:      #c8e6f0;
+    --muted:     #3a6070;
+    --glow:      0 0 18px #00ffe760;
+    --glow2:     0 0 18px #ff3c6e60;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 9999;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,255,231,0.018) 2px,
+      rgba(0,255,231,0.018) 4px
+    );
+  }
+
+  /* Grid bg */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(0,255,231,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,231,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* ── Header ── */
+  header {
+    position: relative; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #030f15 0%, transparent 100%);
+  }
+  .logo {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .logo-icon {
+    width: 42px; height: 42px;
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    box-shadow: var(--glow);
+    animation: pulse-border 2.5s ease-in-out infinite;
+  }
+  @keyframes pulse-border {
+    0%,100% { box-shadow: var(--glow); }
+    50%      { box-shadow: 0 0 30px #00ffe7a0; }
+  }
+  .logo-text h1 {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.1rem; font-weight: 900;
+    color: var(--accent);
+    letter-spacing: 3px;
+  }
+  .logo-text p {
+    font-size: 0.65rem; color: var(--muted);
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex; align-items: center; gap: 20px;
+  }
+  .status-pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid var(--safe);
+    border-radius: 20px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--safe);
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--safe);
+    animation: blink 1.2s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  .clock {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem; color: var(--muted);
+  }
+
+  /* ── Layout ── */
+  .dashboard {
+    position: relative; z-index: 10;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 320px;
+    grid-template-rows: auto auto auto;
+    gap: 16px;
+    padding: 20px 28px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* ── Panels ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.5;
+  }
+  .panel-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-title::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: var(--glow);
+  }
+
+  /* ── Stat Cards ── */
+  .stats-row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+  }
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    position: relative; overflow: hidden;
+    transition: border-color .3s;
+  }
+  .stat-card:hover { border-color: var(--accent); }
+  .stat-card::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0;
+    width: 100%; height: 2px;
+  }
+  .stat-card.safe::after    { background: var(--safe); }
+  .stat-card.warn::after    { background: var(--warn); }
+  .stat-card.critical::after{ background: var(--accent2); }
+  .stat-card.info::after    { background: var(--accent); }
+  .stat-card.total::after   { background: var(--muted); }
+
+  .stat-label {
+    font-size: 0.6rem; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 2rem; font-weight: 900;
+    line-height: 1;
+  }
+  .stat-card.safe     .stat-value { color: var(--safe); }
+  .stat-card.warn     .stat-value { color: var(--warn); }
+  .stat-card.critical .stat-value { color: var(--accent2); text-shadow: var(--glow2); }
+  .stat-card.info     .stat-value { color: var(--accent); }
+  .stat-card.total    .stat-value { color: var(--text); }
+  .stat-sub {
+    font-size: 0.65rem; color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── Predict Panel ── */
+  .predict-panel {
+    grid-column: 1 / 3;
+    grid-row: 2;
+  }
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .field {
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .field label {
+    font-size: 0.6rem; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .field input, .field select {
+    background: #071318;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--accent);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+    width: 100%;
+  }
+  .field input:focus, .field select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px #00ffe730;
+  }
+  .field select option { background: #071318; }
+
+  .btn-predict {
+    width: 100%;
+    background: transparent;
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+    font-size: 0.8rem;
+    letter-spacing: 3px;
+    padding: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .25s;
+    position: relative; overflow: hidden;
+  }
+  .btn-predict::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform .3s ease;
+    z-index: -1;
+  }
+  .btn-predict:hover {
+    color: var(--bg);
+    box-shadow: var(--glow);
+  }
+  .btn-predict:hover::before { transform: scaleX(1); }
+  .btn-predict:active { transform: scale(0.98); }
+
+  /* Quick attack presets */
+  .presets {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+  }
+  .preset-btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid;
+    background: transparent;
+    transition: all .2s;
+  }
+  .preset-btn.normal  { border-color: var(--safe);   color: var(--safe); }
+  .preset-btn.dos     { border-color: var(--accent2); color: var(--accent2); }
+  .preset-btn.probe   { border-color: var(--warn);   color: var(--warn); }
+  .preset-btn.r2l     { border-color: #a855f7;       color: #a855f7; }
+  .preset-btn.u2r     { border-color: #f97316;       color: #f97316; }
+  .preset-btn:hover   { opacity: 0.75; }
+
+  /* ── Result Panel ── */
+  .result-panel {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  .result-display {
+    text-align: center;
+    padding: 20px 10px;
+  }
+  .result-ring {
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    border: 3px solid var(--border);
+    margin: 0 auto 16px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    font-family: 'Orbitron', monospace;
+    transition: all .4s ease;
+    position: relative;
+  }
+  .result-ring::after {
+    content: '';
+    position: absolute; inset: -6px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    animation: spin 3s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .result-ring.safe     { border-color: var(--safe);   box-shadow: 0 0 30px #00e67640; }
+  .result-ring.safe::after  { border-top-color: var(--safe); }
+  .result-ring.warning  { border-color: var(--warn);   box-shadow: 0 0 30px #ffaa0040; }
+  .result-ring.warning::after { border-top-color: var(--warn); }
+  .result-ring.critical { border-color: var(--accent2); box-shadow: 0 0 30px #ff3c6e60; animation: critical-pulse 0.8s ease-in-out infinite; }
+  .result-ring.suspicious { border-color: #a855f7; box-shadow: 0 0 30px #a855f740; }
+  .result-ring.suspicious::after { border-top-color: #a855f7; }
+
+  @keyframes critical-pulse {
+    0%,100% { box-shadow: 0 0 30px #ff3c6e60; }
+    50%      { box-shadow: 0 0 60px #ff3c6ea0; }
+  }
+
+  .result-threat {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.1rem; font-weight: 900;
+  }
+  .result-conf {
+    font-size: 0.7rem; color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .result-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.5rem; font-weight: 900;
+    letter-spacing: 3px;
+    margin-bottom: 6px;
+  }
+  .result-label.safe      { color: var(--safe); }
+  .result-label.warning   { color: var(--warn); }
+  .result-label.critical  { color: var(--accent2); text-shadow: var(--glow2); }
+  .result-label.suspicious{ color: #a855f7; }
+
+  .result-sub {
+    font-size: 0.7rem; color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    margin-bottom: 16px;
+  }
+
+  .prob-bars { text-align: left; }
+  .prob-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 7px;
+  }
+  .prob-name {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem; width: 60px; color: var(--muted);
+  }
+  .prob-bar-bg {
+    flex: 1; height: 6px;
+    background: #071318;
+    border-radius: 3px; overflow: hidden;
+  }
+  .prob-bar-fill {
+    height: 100%; border-radius: 3px;
+    transition: width .5s ease;
+  }
+  .prob-pct {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem; width: 38px;
+    text-align: right; color: var(--text);
+  }
+
+  /* ── Live Feed ── */
+  .feed-panel {
+    grid-column: 4;
+    grid-row: 2 / 4;
+    max-height: 620px;
+    display: flex; flex-direction: column;
+  }
+  .feed-list {
+    flex: 1; overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .feed-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #071318;
+    animation: feed-in .3s ease;
+  }
+  @keyframes feed-in {
+    from { opacity:0; transform: translateX(10px); }
+    to   { opacity:1; transform: translateX(0); }
+  }
+  .feed-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0; margin-top: 4px;
+  }
+  .feed-dot.SAFE       { background: var(--safe); }
+  .feed-dot.WARNING    { background: var(--warn); }
+  .feed-dot.CRITICAL   { background: var(--accent2); box-shadow: var(--glow2); }
+  .feed-dot.SUSPICIOUS { background: #a855f7; }
+
+  .feed-content { flex: 1; }
+  .feed-type {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem; font-weight: 600;
+  }
+  .feed-type.SAFE       { color: var(--safe); }
+  .feed-type.WARNING    { color: var(--warn); }
+  .feed-type.CRITICAL   { color: var(--accent2); }
+  .feed-type.SUSPICIOUS { color: #a855f7; }
+
+  .feed-meta {
+    font-size: 0.6rem; color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  /* ── Charts ── */
+  .chart-panel-1 {
+    grid-column: 1 / 3;
+    grid-row: 3;
+  }
+  .chart-panel-2 {
+    grid-column: 3;
+    grid-row: 3;
+  }
+  canvas { max-height: 180px; }
+
+  /* ── Alert Banner ── */
+  #alert-banner {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 9998;
+    background: var(--accent2);
+    color: white;
+    font-family: 'Orbitron', monospace;
+    font-size: 0.85rem;
+    letter-spacing: 2px;
+    text-align: center;
+    padding: 10px;
+    animation: slide-down .3s ease;
+  }
+  @keyframes slide-down {
+    from { transform: translateY(-100%); }
+    to   { transform: translateY(0); }
+  }
+
+  /* ── Loading spinner ── */
+  .spinner {
+    display: none;
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    margin: 0 auto;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="alert-banner">⚠ CRITICAL THREAT DETECTED — IMMEDIATE ACTION REQUIRED</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🛡</div>
+    <div class="logo-text">
+      <h1>THREATDETECT AI</h1>
+      <p>Network Intrusion Detection System v1.0</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-pill">
+      <div class="status-dot"></div>
+      SYSTEM ONLINE
+    </div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- Dashboard -->
+<div class="dashboard">
+
+  <!-- Stat Cards -->
+  <div class="stats-row">
+    <div class="stat-card total">
+      <div class="stat-label">Total Analyzed</div>
+      <div class="stat-value" id="stat-total">0</div>
+      <div class="stat-sub">packets scanned</div>
+    </div>
+    <div class="stat-card safe">
+      <div class="stat-label">Safe</div>
+      <div class="stat-value" id="stat-safe">0</div>
+      <div class="stat-sub">normal traffic</div>
+    </div>
+    <div class="stat-card warn">
+      <div class="stat-label">Warning</div>
+      <div class="stat-value" id="stat-warn">0</div>
+      <div class="stat-sub">suspicious activity</div>
+    </div>
+    <div class="stat-card critical">
+      <div class="stat-label">Critical</div>
+      <div class="stat-value" id="stat-crit">0</div>
+      <div class="stat-sub">active threats</div>
+    </div>
+    <div class="stat-card info">
+      <div class="stat-label">Anomalies</div>
+      <div class="stat-value" id="stat-anom">0</div>
+      <div class="stat-sub">unknown patterns</div>
+    </div>
+  </div>
+
+  <!-- Predict Panel -->
+  <div class="panel predict-panel">
+    <div class="panel-title">Packet Analyzer — Send to AI</div>
+
+    <!-- Quick presets -->
+    <div style="margin-bottom:10px;">
+      <div class="stat-label" style="font-size:0.58rem;letter-spacing:1.5px;margin-bottom:6px;">QUICK PRESETS</div>
+      <div class="presets">
+        <button class="preset-btn normal" onclick="loadPreset('normal')">✅ Normal</button>
+        <button class="preset-btn dos"    onclick="loadPreset('dos')">💥 DoS Attack</button>
+        <button class="preset-btn probe"  onclick="loadPreset('probe')">🔍 Port Scan</button>
+        <button class="preset-btn r2l"    onclick="loadPreset('r2l')">🔓 R2L Attack</button>
+        <button class="preset-btn u2r"    onclick="loadPreset('u2r')">👑 U2R Attack</button>
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label>Protocol Type</label>
+        <select id="protocol_type">
+          <option>tcp</option><option>udp</option><option>icmp</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Service</label>
+        <select id="service">
+          <option>http</option><option>ftp</option><option>smtp</option>
+          <option>ssh</option><option>dns</option><option>private</option>
+          <option>domain_u</option><option>ecr_i</option><option>telnet</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Flag</label>
+        <select id="flag">
+          <option>SF</option><option>S0</option><option>REJ</option>
+          <option>RSTO</option><option>SH</option><option>S1</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Duration (s)</label>
+        <input id="duration" type="number" value="0" min="0"/>
+      </div>
+      <div class="field">
+        <label>Src Bytes</label>
+        <input id="src_bytes" type="number" value="0" min="0"/>
+      </div>
+      <div class="field">
+        <label>Dst Bytes</label>
+        <input id="dst_bytes" type="number" value="0" min="0"/>
+      </div>
+      <div class="field">
+        <label>Logged In</label>
+        <select id="logged_in">
+          <option value="1">Yes</option><option value="0">No</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Count</label>
+        <input id="count" type="number" value="1" min="0"/>
+      </div>
+      <div class="field">
+        <label>Srv Count</label>
+        <input id="srv_count" type="number" value="1" min="0"/>
+      </div>
+      <div class="field">
+        <label>Serror Rate</label>
+        <input id="serror_rate" type="number" value="0" step="0.01" min="0" max="1"/>
+      </div>
+      <div class="field">
+        <label>Rerror Rate</label>
+        <input id="rerror_rate" type="number" value="0" step="0.01" min="0" max="1"/>
+      </div>
+      <div class="field">
+        <label>Same Srv Rate</label>
+        <input id="same_srv_rate" type="number" value="1" step="0.01" min="0" max="1"/>
+      </div>
+    </div>
+
+    <div class="spinner" id="spinner"></div>
+    <button class="btn-predict" id="predict-btn" onclick="runPrediction()">
+      ▶ &nbsp; ANALYZE PACKET
+    </button>
+  </div>
+
+  <!-- Result Panel -->
+  <div class="panel result-panel">
+    <div class="panel-title">Detection Result</div>
+    <div class="result-display">
+      <div class="result-ring" id="result-ring">
+        <div class="result-threat" id="result-threat" style="color:var(--muted)">—</div>
+        <div class="result-conf" id="result-conf"></div>
+      </div>
+      <div class="result-label" id="result-label" style="color:var(--muted)">AWAITING</div>
+      <div class="result-sub" id="result-sub">Submit a packet to analyze</div>
+      <div class="prob-bars" id="prob-bars"></div>
+    </div>
+  </div>
+
+  <!-- Live Feed -->
+  <div class="panel feed-panel">
+    <div class="panel-title">Live Event Feed</div>
+    <div class="feed-list" id="feed-list">
+      <div style="color:var(--muted);font-size:0.7rem;font-family:'Share Tech Mono',monospace;padding:10px 0;">
+        Waiting for packets...
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline Chart -->
+  <div class="panel chart-panel-1">
+    <div class="panel-title">Threat Timeline</div>
+    <canvas id="timelineChart"></canvas>
+  </div>
+
+  <!-- Donut Chart -->
+  <div class="panel chart-panel-2">
+    <div class="panel-title">Attack Distribution</div>
+    <canvas id="donutChart"></canvas>
+  </div>
+
+</div>
+
+<script>
+// ── Clock ──────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('en-GB', {hour12: false});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── State ──────────────────────────────────────────────────
+const stats = { total:0, safe:0, warn:0, crit:0, anom:0 };
+const attackCounts = { Normal:0, DoS:0, Probe:0, R2L:0, U2R:0 };
+const timelineData = { labels:[], safe:[], threat:[] };
+const API = 'http://localhost:8000';
+
+// ── Chart: Timeline ────────────────────────────────────────
+const tlCtx = document.getElementById('timelineChart').getContext('2d');
+const tlChart = new Chart(tlCtx, {
+  type: 'line',
+  data: {
+    labels: timelineData.labels,
+    datasets: [
+      {
+        label: 'Safe',
+        data: timelineData.safe,
+        borderColor: '#00e676',
+        backgroundColor: 'rgba(0,230,118,0.08)',
+        tension: 0.4, fill: true, pointRadius: 3,
+        pointBackgroundColor: '#00e676'
+      },
+      {
+        label: 'Threats',
+        data: timelineData.threat,
+        borderColor: '#ff3c6e',
+        backgroundColor: 'rgba(255,60,110,0.08)',
+        tension: 0.4, fill: true, pointRadius: 3,
+        pointBackgroundColor: '#ff3c6e'
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: true,
+    plugins: { legend: { labels: { color: '#3a6070', font: { size: 11 } } } },
+    scales: {
+      x: { ticks: { color: '#3a6070', font:{size:10} }, grid: { color: '#0a2a35' } },
+      y: { ticks: { color: '#3a6070', font:{size:10} }, grid: { color: '#0a2a35' }, beginAtZero: true }
+    }
+  }
+});
+
+// ── Chart: Donut ───────────────────────────────────────────
+const doCtx = document.getElementById('donutChart').getContext('2d');
+const doChart = new Chart(doCtx, {
+  type: 'doughnut',
+  data: {
+    labels: ['Normal','DoS','Probe','R2L','U2R'],
+    datasets: [{
+      data: [1,0,0,0,0],
+      backgroundColor: ['#00e676','#ff3c6e','#ffaa00','#a855f7','#f97316'],
+      borderColor: '#040d12',
+      borderWidth: 3
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: true,
+    cutout: '65%',
+    plugins: { legend: { position: 'right', labels: { color: '#3a6070', font:{size:10}, boxWidth: 10 } } }
+  }
+});
+
+function updateDonut() {
+  doChart.data.datasets[0].data = [
+    attackCounts.Normal, attackCounts.DoS,
+    attackCounts.Probe,  attackCounts.R2L, attackCounts.U2R
+  ];
+  doChart.update();
+}
+
+function updateTimeline(isSafe) {
+  const t = new Date().toLocaleTimeString('en-GB',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if (timelineData.labels.length > 15) {
+    timelineData.labels.shift();
+    timelineData.safe.shift();
+    timelineData.threat.shift();
+  }
+  timelineData.labels.push(t);
+  timelineData.safe.push(isSafe ? 1 : 0);
+  timelineData.threat.push(isSafe ? 0 : 1);
+  tlChart.update();
+}
+
+// ── Presets ────────────────────────────────────────────────
+const presets = {
+  normal: { protocol_type:'tcp', service:'http', flag:'SF', duration:0,   src_bytes:181,    dst_bytes:5450, logged_in:1, count:8,   srv_count:8,   serror_rate:0,    rerror_rate:0,    same_srv_rate:1 },
+  dos:    { protocol_type:'tcp', service:'http', flag:'S0', duration:0,   src_bytes:0,      dst_bytes:0,    logged_in:0, count:511, srv_count:511, serror_rate:1,    rerror_rate:0,    same_srv_rate:1 },
+  probe:  { protocol_type:'tcp', service:'ftp',  flag:'SF', duration:0,   src_bytes:0,      dst_bytes:0,    logged_in:0, count:229, srv_count:229, serror_rate:0,    rerror_rate:0,    same_srv_rate:0 },
+  r2l:    { protocol_type:'tcp', service:'ftp',  flag:'SF', duration:10,  src_bytes:1032,   dst_bytes:0,    logged_in:0, count:1,   srv_count:1,   serror_rate:0,    rerror_rate:0,    same_srv_rate:1 },
+  u2r:    { protocol_type:'tcp', service:'telnet',flag:'SF',duration:407, src_bytes:10228,  dst_bytes:5390, logged_in:1, count:1,   srv_count:1,   serror_rate:0,    rerror_rate:0,    same_srv_rate:1 }
+};
+
+function loadPreset(name) {
+  const p = presets[name];
+  document.getElementById('protocol_type').value = p.protocol_type;
+  document.getElementById('service').value = p.service;
+  document.getElementById('flag').value = p.flag;
+  document.getElementById('duration').value = p.duration;
+  document.getElementById('src_bytes').value = p.src_bytes;
+  document.getElementById('dst_bytes').value = p.dst_bytes;
+  document.getElementById('logged_in').value = p.logged_in;
+  document.getElementById('count').value = p.count;
+  document.getElementById('srv_count').value = p.srv_count;
+  document.getElementById('serror_rate').value = p.serror_rate;
+  document.getElementById('rerror_rate').value = p.rerror_rate;
+  document.getElementById('same_srv_rate').value = p.same_srv_rate;
+}
+
+// ── Prediction ────────────────────────────────────────────
+async function runPrediction() {
+  const btn = document.getElementById('predict-btn');
+  const spinner = document.getElementById('spinner');
+  btn.style.display = 'none';
+  spinner.style.display = 'block';
+
+  const payload = {
+    protocol_type: document.getElementById('protocol_type').value,
+    service:       document.getElementById('service').value,
+    flag:          document.getElementById('flag').value,
+    duration:      +document.getElementById('duration').value,
+    src_bytes:     +document.getElementById('src_bytes').value,
+    dst_bytes:     +document.getElementById('dst_bytes').value,
+    logged_in:     +document.getElementById('logged_in').value,
+    count:         +document.getElementById('count').value,
+    srv_count:     +document.getElementById('srv_count').value,
+    serror_rate:   +document.getElementById('serror_rate').value,
+    rerror_rate:   +document.getElementById('rerror_rate').value,
+    same_srv_rate: +document.getElementById('same_srv_rate').value,
+  };
+
+  try {
+    const res  = await fetch(`${API}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    displayResult(data);
+    updateStats(data);
+    addFeedItem(data);
+    updateTimeline(data.alert_level === 'SAFE');
+    if (data.threat_type in attackCounts) attackCounts[data.threat_type]++;
+    updateDonut();
+
+    if (data.alert_level === 'CRITICAL') showAlert();
+
+  } catch (e) {
+    // Demo mode when backend not running
+    const demo = demoPredict(payload);
+    displayResult(demo);
+    updateStats(demo);
+    addFeedItem(demo);
+    updateTimeline(demo.alert_level === 'SAFE');
+    if (demo.threat_type in attackCounts) attackCounts[demo.threat_type]++;
+    updateDonut();
+    if (demo.alert_level === 'CRITICAL') showAlert();
+  } finally {
+    spinner.style.display = 'none';
+    btn.style.display = 'block';
+  }
+}
+
+// Demo predict when backend offline
+function demoPredict(p) {
+  let threat = 'Normal', alert = 'SAFE', conf = 97.5;
+  const probs = { DoS:0, Normal:97.5, Probe:0, R2L:0, U2R:0 };
+
+  if (p.serror_rate >= 1 && p.count > 200) {
+    threat='DoS'; alert='WARNING'; conf=98.2;
+    probs.DoS=98.2; probs.Normal=1.8;
+  } else if (p.service==='ftp' && p.dst_bytes===0 && p.count>100) {
+    threat='Probe'; alert='WARNING'; conf=91.4;
+    probs.Probe=91.4; probs.Normal=8.6;
+  } else if (p.service==='ftp' && p.src_bytes>1000 && p.logged_in==0) {
+    threat='R2L'; alert='CRITICAL'; conf=87.3;
+    probs.R2L=87.3; probs.Normal=12.7;
+  } else if (p.service==='telnet' && p.duration>300) {
+    threat='U2R'; alert='CRITICAL'; conf=83.1;
+    probs.U2R=83.1; probs.Normal=16.9;
+  }
+
+  return {
+    threat_type: threat, confidence: conf,
+    alert_level: alert, alert_color: 'green',
+    is_anomaly: alert !== 'SAFE',
+    class_probabilities: probs,
+    timestamp: new Date().toISOString(),
+    demo_mode: true
+  };
+}
+
+function displayResult(data) {
+  const ring  = document.getElementById('result-ring');
+  const label = document.getElementById('result-label');
+  const sub   = document.getElementById('result-sub');
+  const threat= document.getElementById('result-threat');
+  const conf  = document.getElementById('result-conf');
+
+  const lvl = data.alert_level.toLowerCase();
+  ring.className  = `result-ring ${lvl}`;
+  label.className = `result-label ${lvl}`;
+  label.textContent = data.alert_level;
+
+  threat.textContent = data.threat_type;
+  threat.style.color = lvl==='safe' ? 'var(--safe)' :
+                       lvl==='critical' ? 'var(--accent2)' :
+                       lvl==='warning' ? 'var(--warn)' : '#a855f7';
+  conf.textContent   = `${data.confidence.toFixed(1)}% conf.`;
+  sub.textContent    = data.is_anomaly
+    ? '⚠ Anomaly pattern detected'
+    : (data.demo_mode ? '📡 Demo mode — start backend for real predictions' : '✅ Pattern matches known traffic');
+
+  // Probability bars
+  const colors = { Normal:'#00e676', DoS:'#ff3c6e', Probe:'#ffaa00', R2L:'#a855f7', U2R:'#f97316' };
+  const bars = document.getElementById('prob-bars');
+  bars.innerHTML = '<div style="font-size:0.6rem;letter-spacing:1.5px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">Class Probabilities</div>';
+  for (const [cls, pct] of Object.entries(data.class_probabilities)) {
+    bars.innerHTML += `
+      <div class="prob-row">
+        <div class="prob-name">${cls}</div>
+        <div class="prob-bar-bg">
+          <div class="prob-bar-fill" style="width:${pct}%;background:${colors[cls]||'#888'}"></div>
+        </div>
+        <div class="prob-pct">${pct.toFixed(1)}%</div>
+      </div>`;
+  }
+}
+
+function updateStats(data) {
+  stats.total++;
+  if (data.alert_level === 'SAFE')       stats.safe++;
+  else if (data.alert_level === 'WARNING' || data.alert_level === 'SUSPICIOUS') stats.warn++;
+  else if (data.alert_level === 'CRITICAL') stats.crit++;
+  if (data.is_anomaly) stats.anom++;
+
+  document.getElementById('stat-total').textContent = stats.total;
+  document.getElementById('stat-safe').textContent  = stats.safe;
+  document.getElementById('stat-warn').textContent  = stats.warn;
+  document.getElementById('stat-crit').textContent  = stats.crit;
+  document.getElementById('stat-anom').textContent  = stats.anom;
+}
+
+function addFeedItem(data) {
+  const feed = document.getElementById('feed-list');
+  if (feed.children[0]?.style.color === 'var(--muted)') feed.innerHTML = '';
+  const t = new Date().toLocaleTimeString('en-GB', {hour12:false});
+  const item = document.createElement('div');
+  item.className = 'feed-item';
+  item.innerHTML = `
+    <div class="feed-dot ${data.alert_level}"></div>
+    <div class="feed-content">
+      <div class="feed-type ${data.alert_level}">${data.threat_type} — ${data.alert_level}</div>
+      <div class="feed-meta">${t} &nbsp;|&nbsp; ${data.confidence.toFixed(1)}% confidence</div>
+    </div>`;
+  feed.insertBefore(item, feed.firstChild);
+  if (feed.children.length > 30) feed.removeChild(feed.lastChild);
+}
+
+function showAlert() {
+  const banner = document.getElementById('alert-banner');
+  banner.style.display = 'block';
+  setTimeout(() => banner.style.display = 'none', 4000);
+}
+
+// Load normal preset by default
+loadPreset('normal');
+</script>
+</body>
+</html>
